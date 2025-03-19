@@ -1,12 +1,22 @@
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 const client = new DynamoDBClient({});
 const tableName = process.env.TABLE_NAME!;
 
-export const handler: APIGatewayProxyHandler = async (event) => {
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const body = JSON.parse(event.body || '{}');
+    // Check for API key (will be implemented later for authorization)
+    const apiKey = event.headers['x-api-key'];
+    
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: 'Request body is required' }),
+      };
+    }
+
+    const body = JSON.parse(event.body);
     const { category, productId, description, price } = body;
 
     if (!category || !productId || !description || !price) {
@@ -23,6 +33,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         productId: { S: productId },
         description: { S: description },
         price: { N: price.toString() },
+        inStock: { BOOL: body.inStock ?? true }
       },
     });
 
@@ -30,12 +41,16 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     return {
       statusCode: 201,
-      body: JSON.stringify({ message: 'Item created successfully' }),
+      body: JSON.stringify({ 
+        message: 'Item created successfully',
+        item: { category, productId, description, price, inStock: body.inStock ?? true }
+      }),
     };
   } catch (error) {
+    console.error('Error creating item:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'Internal server error', error }),
+      body: JSON.stringify({ message: 'Internal server error', error: String(error) }),
     };
   }
 };
