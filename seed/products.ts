@@ -1,4 +1,6 @@
-export const products = [
+import { Product } from '../shared/types';
+
+export const products: Product[] = [
   {
     category: 'electronics',
     productId: '1',
