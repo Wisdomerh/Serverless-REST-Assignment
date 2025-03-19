@@ -1,8 +1,8 @@
 {
-  "name": "simple-app",
+  "name": "global-product-catalog",
   "version": "0.1.0",
   "bin": {
-    "simple-app": "bin/simple-app.js"
+    "global-product-catalog": "bin/global-product-catalog.js"
   },
   "scripts": {
     "build": "tsc",

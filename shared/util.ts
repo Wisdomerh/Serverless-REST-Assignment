@@ -1,5 +1,5 @@
 import { marshall } from "@aws-sdk/util-dynamodb";
-import { Movie, MovieCast } from "./types";
+import { Product } from "./types";
 import { APIGatewayProxyResult } from 'aws-lambda';
 
 /**
@@ -38,17 +38,17 @@ export const validateFields = (body: Record<string, any>, requiredFields: string
   return requiredFields.filter((field) => !body[field]);
 };
 
-type Entity = Movie | MovieCast;  // NEW
+type Entity = Product;  // Changed from Movie | MovieCast
 export const generateItem = (entity: Entity) => {
   return {
     PutRequest: {
       Item: marshall(entity),
- },
- };
+    },
+  };
 };
 
 export const generateBatch = (data: Entity[]) => {
   return data.map((e) => {
     return generateItem(e);
- });
+  });
 };
