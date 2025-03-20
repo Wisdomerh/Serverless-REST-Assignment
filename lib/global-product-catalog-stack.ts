@@ -4,7 +4,9 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
+import * as cr from 'aws-cdk-lib/custom-resources';
 
 export class GlobalProductCatalogStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -70,10 +72,40 @@ export class GlobalProductCatalogStack extends cdk.Stack {
     productsTable.grantReadWriteData(translateItemLambda);
 
     // Give translate lambda permission to use the translate service
-    translateItemLambda.addToRolePolicy(new cdk.aws_iam.PolicyStatement({
+    translateItemLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['translate:TranslateText'],
       resources: ['*'],
     }));
+
+    // Seed data function
+    const seedFunction = new nodejs.NodejsFunction(this, 'SeedDataFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: path.join(__dirname, '../seed/products.ts'),
+      handler: 'handler',
+      environment: {
+        TABLE_NAME: productsTable.tableName,
+      },
+      timeout: cdk.Duration.seconds(30),
+    });
+    
+    // Grant the seed function permission to write to the table
+    productsTable.grantWriteData(seedFunction);
+    
+    // Create a custom resource provider to trigger seeding
+    const seedingProvider = new cr.Provider(this, 'SeedingProvider', {
+      onEventHandler: seedFunction,
+      logRetention: cdk.aws_logs.RetentionDays.ONE_DAY,
+    });
+
+    // Create a custom resource that will trigger the seeding
+    const seeder = new cdk.CustomResource(this, 'TableSeeder', {
+      serviceToken: seedingProvider.serviceToken,
+      properties: {
+        tableName: productsTable.tableName,
+        // This ensures it runs on every deploy
+        timestamp: Date.now().toString(),
+      },
+    });
 
     // API Gateway
     const api = new apigateway.RestApi(this, 'GlobalProductCatalogApi', {

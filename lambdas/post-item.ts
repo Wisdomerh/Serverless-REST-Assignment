@@ -12,16 +12,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (!event.body) {
       return {
         statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ message: 'Request body is required' }),
       };
     }
 
     const body = JSON.parse(event.body);
-    const { category, productId, description, price } = body;
+    const { category, productId, name, description, price } = body;
 
     if (!category || !productId || !description || !price) {
       return {
         statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ message: 'Missing required fields' }),
       };
     }
@@ -31,6 +37,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       Item: {
         category: { S: category },
         productId: { S: productId },
+        name: { S: name || productId }, // Use name or default to productId
         description: { S: description },
         price: { N: price.toString() },
         inStock: { BOOL: body.inStock ?? true }
@@ -41,15 +48,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     return {
       statusCode: 201,
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ 
         message: 'Item created successfully',
-        item: { category, productId, description, price, inStock: body.inStock ?? true }
+        item: { category, productId, name: name || productId, description, price, inStock: body.inStock ?? true }
       }),
     };
   } catch (error) {
     console.error('Error creating item:', error);
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ message: 'Internal server error', error: String(error) }),
     };
   }
