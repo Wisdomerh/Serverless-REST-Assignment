@@ -1,77 +1,121 @@
-import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { TranslateClient, TranslateTextCommand } from '@aws-sdk/client-translate';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { formatResponse, handleError, isValidLanguageCode, createTranslationKey } from '../shared-layer';
 
-const client = new DynamoDBClient({});
+const dynamoClient = new DynamoDBClient({});
+const translateClient = new TranslateClient({});
 const tableName = process.env.TABLE_NAME!;
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // Check for API key (will be implemented later for authorization)
-    const apiKey = event.headers['x-api-key'];
+    console.log('Event:', JSON.stringify(event, null, 2));
     
     const category = event.pathParameters?.category;
     const productId = event.pathParameters?.productId;
-    
-    if (!event.body) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ message: 'Request body is required' }),
-      };
+    const language = event.queryStringParameters?.language || 'fr'; // Default to French
+
+    if (!category || !productId) {
+      return formatResponse(400, { message: 'Category and productId are required' });
     }
 
-    const body = JSON.parse(event.body);
-    const { description, price } = body;
-
-    if (!category || !productId || (!description && !price)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ message: 'Missing required fields' }),
-      };
+    if (!isValidLanguageCode(language)) {
+      return formatResponse(400, { 
+        message: 'Invalid language code. Use ISO language codes like "fr", "es", "de", etc.' 
+      });
     }
 
-    const updateExpression: string[] = [];
-    const expressionAttributeValues: Record<string, any> = {};
+    console.log(`Getting product: ${category}/${productId} for translation to ${language}`);
 
-    if (description) {
-      updateExpression.push('description = :description');
-      expressionAttributeValues[':description'] = { S: description };
-    }
-
-    if (price) {
-      updateExpression.push('price = :price');
-      expressionAttributeValues[':price'] = { N: price.toString() };
-    }
-
-    if (body.inStock !== undefined) {
-      updateExpression.push('inStock = :inStock');
-      expressionAttributeValues[':inStock'] = { BOOL: body.inStock };
-    }
-
-    const command = new UpdateItemCommand({
+    // Get the product from DynamoDB
+    const getCommand = new GetItemCommand({
       TableName: tableName,
       Key: {
         category: { S: category },
         productId: { S: productId },
       },
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeValues: expressionAttributeValues,
-      ReturnValues: 'ALL_NEW'
     });
 
-    const result = await client.send(command);
+    const result = await dynamoClient.send(getCommand);
+    
+    if (!result.Item) {
+      return formatResponse(404, { 
+        message: 'Product not found',
+        category,
+        productId
+      });
+    }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ 
-        message: 'Item updated successfully',
-        attributes: result.Attributes
-      }),
-    };
+    const item = unmarshall(result.Item);
+    const description = item.description;
+    
+    if (!description) {
+      return formatResponse(400, { message: 'Product has no description to translate' });
+    }
+
+    // Check if translation is already cached
+    if (item.translations && item.translations[language]) {
+      console.log(`Using cached translation for language: ${language}`);
+      
+      return formatResponse(200, {
+        original: description,
+        translated: item.translations[language],
+        language,
+        cached: true
+      });
+    }
+
+    console.log(`Translating description: "${description}" to ${language}`);
+    
+    // Translate the description
+    const translateCommand = new TranslateTextCommand({
+      Text: description,
+      SourceLanguageCode: 'auto', // Auto-detect source language
+      TargetLanguageCode: language,
+    });
+
+    const translateResult = await translateClient.send(translateCommand);
+    const translatedText = translateResult.TranslatedText;
+
+    if (!translatedText) {
+      return formatResponse(500, { message: 'Translation failed' });
+    }
+
+    console.log(`Translation result: "${translatedText}"`);
+
+    // Cache the translation
+    const translations = item.translations || {};
+    translations[language] = translatedText;
+
+    const updateCommand = new UpdateItemCommand({
+      TableName: tableName,
+      Key: {
+        category: { S: category },
+        productId: { S: productId },
+      },
+      UpdateExpression: 'SET translations = :translations',
+      ExpressionAttributeValues: {
+        ':translations': { 
+          M: Object.entries(translations).reduce((acc, [key, value]) => {
+            acc[key] = { S: value as string };
+            return acc;
+          }, {} as Record<string, any>)
+        },
+      },
+    });
+
+    await dynamoClient.send(updateCommand);
+    console.log(`Cached translation for future use`);
+
+    return formatResponse(200, {
+      original: description,
+      translated: translatedText,
+      language,
+      cached: false
+    });
   } catch (error) {
-    console.error('Error updating item:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: 'Internal server error', error: String(error) }),
-    };
+    console.error('Error translating item:', error);
+    return handleError(error);
   }
 };

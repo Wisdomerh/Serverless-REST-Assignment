@@ -41,11 +41,18 @@ export const validateFields = (body: Record<string, any>, requiredFields: string
   return requiredFields.filter((field) => !body[field]);
 };
 
+/**
+ * Creates a unique key for translation caching
+ */
 export function createTranslationKey(text: string, language: string): string {
   // Simple hash function for demo purposes
   return `${Buffer.from(text).toString('base64')}_${language}`;
 }
 
+/**
+ * Check if a string contains only letters and basic punctuation
+ * Used to validate language codes
+ */
 export function isValidLanguageCode(code: string): boolean {
   return /^[a-z]{2}(-[A-Z]{2})?$/.test(code);
 }
@@ -61,6 +68,9 @@ export const generateItem = (entity: Product) => {
   };
 };
 
+/**
+ * Helper function to generate a batch of PutRequest items
+ */
 export const generateBatch = (data: Product[]) => {
   return data.map((e) => {
     return generateItem(e);

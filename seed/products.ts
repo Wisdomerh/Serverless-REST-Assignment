@@ -1,6 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { Product } from '../shared/types';
+import { Product } from '../shared-layer/types';
 
 // Initialize DynamoDB document client
 const ddbClient = new DynamoDBClient({});
