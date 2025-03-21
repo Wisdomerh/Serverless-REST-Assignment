@@ -1,12 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import { ProductApi } from './constructs/product-api';
 
 export class GlobalProductCatalogStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -28,7 +28,14 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // Lambda Functions
+    // Create Lambda layer for shared code
+    const sharedLayer = new lambda.LayerVersion(this, 'SharedLayer', {
+      code: lambda.Code.fromAsset(path.join(__dirname, '../shared-layer')),
+      compatibleRuntimes: [lambda.Runtime.NODEJS_18_X],
+      description: 'Common utilities and types for product catalog application',
+    });
+
+    // Lambda Functions with shared layer
     const postItemLambda = new nodejs.NodejsFunction(this, 'PostItemFunction', {
       runtime: lambda.Runtime.NODEJS_18_X,
       entry: path.join(__dirname, '../lambdas/post-item.ts'),
@@ -36,6 +43,12 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       environment: {
         TABLE_NAME: productsTable.tableName,
       },
+      bundling: {
+        externalModules: [
+          'aws-sdk',
+        ],
+      },
+      layers: [sharedLayer],
     });
 
     const getItemLambda = new nodejs.NodejsFunction(this, 'GetItemFunction', {
@@ -45,6 +58,12 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       environment: {
         TABLE_NAME: productsTable.tableName,
       },
+      bundling: {
+        externalModules: [
+          'aws-sdk',
+        ],
+      },
+      layers: [sharedLayer],
     });
 
     const putItemLambda = new nodejs.NodejsFunction(this, 'PutItemFunction', {
@@ -54,6 +73,12 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       environment: {
         TABLE_NAME: productsTable.tableName,
       },
+      bundling: {
+        externalModules: [
+          'aws-sdk',
+        ],
+      },
+      layers: [sharedLayer],
     });
 
     const translateItemLambda = new nodejs.NodejsFunction(this, 'TranslateItemFunction', {
@@ -63,6 +88,12 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       environment: {
         TABLE_NAME: productsTable.tableName,
       },
+      bundling: {
+        externalModules: [
+          'aws-sdk',
+        ],
+      },
+      layers: [sharedLayer],
     });
 
     // Grant permissions to Lambda functions
@@ -110,58 +141,22 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       },
     });
 
-    // API Gateway
-    const api = new apigateway.RestApi(this, 'GlobalProductCatalogApi', {
-      restApiName: 'Global Product Catalog Service',
+    // Create the custom API construct
+    const productApi = new ProductApi(this, 'ProductApi', {
+      getItemFunction: getItemLambda,
+      postItemFunction: postItemLambda,
+      putItemFunction: putItemLambda,
+      translateItemFunction: translateItemLambda
     });
-
-    // API Key for Authorization
-    const apiKey = new apigateway.ApiKey(this, 'ProductApiKey', {
-      apiKeyName: 'product-api-key',
-      enabled: true,
-    });
-    
-    // Create usage plan
-    const plan = new apigateway.UsagePlan(this, 'UsagePlan', {
-      name: 'Easy',
-      throttle: {
-        rateLimit: 10,
-        burstLimit: 2
-      }
-    });
-    
-    // Add API stages and key to the usage plan
-    plan.addApiStage({
-      stage: api.deploymentStage
-    });
-    plan.addApiKey(apiKey);
-
-    // API Endpoints
-    const products = api.root.addResource('products');
-    products.addMethod('POST', new apigateway.LambdaIntegration(postItemLambda), {
-      apiKeyRequired: true,
-    });
-    products.addMethod('GET', new apigateway.LambdaIntegration(getItemLambda));
-
-    const product = products.addResource('{category}');
-    product.addMethod('GET', new apigateway.LambdaIntegration(getItemLambda));
-
-    const productItem = product.addResource('{productId}');
-    productItem.addMethod('PUT', new apigateway.LambdaIntegration(putItemLambda), {
-      apiKeyRequired: true,
-    });
-
-    const translation = productItem.addResource('translation');
-    translation.addMethod('GET', new apigateway.LambdaIntegration(translateItemLambda));
     
     // Stack outputs
     new cdk.CfnOutput(this, 'ApiUrl', {
-      value: api.url,
+      value: productApi.api.url,
       description: 'The URL of the API Gateway',
     });
     
     new cdk.CfnOutput(this, 'ApiKeyId', {
-      value: apiKey.keyId,
+      value: productApi.apiKey.keyId,
       description: 'The ID of the API Key. Use "aws apigateway get-api-key --api-key [THIS_VALUE] --include-value" to get the value',
     });
   }
