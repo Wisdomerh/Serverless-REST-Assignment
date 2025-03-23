@@ -136,7 +136,6 @@ export class GlobalProductCatalogStack extends cdk.Stack {
       serviceToken: seedingProvider.serviceToken,
       properties: {
         tableName: productsTable.tableName,
-        // This ensures it runs on every deploy
         timestamp: Date.now().toString(),
       },
     });
