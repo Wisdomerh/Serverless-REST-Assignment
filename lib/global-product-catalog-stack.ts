@@ -102,7 +102,6 @@ export class GlobalProductCatalogStack extends cdk.Stack {
     productsTable.grantReadWriteData(putItemLambda);
     productsTable.grantReadWriteData(translateItemLambda);
 
-    // Give translate lambda permission to use the translate service and comprehend for language detection
     translateItemLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'translate:TranslateText',

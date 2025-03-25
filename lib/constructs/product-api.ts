@@ -22,7 +22,6 @@ export class ProductApi extends Construct {
     this.api = new apigateway.RestApi(this, 'Api', {
       restApiName: 'Global Product Catalog Service',
       description: 'API for managing global product catalog',
-      // Remove deployOptions entirely to avoid CloudWatch logging issues
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -36,7 +35,7 @@ export class ProductApi extends Construct {
       enabled: true,
     });
 
-    // Create usage plan
+
     const plan = new apigateway.UsagePlan(this, 'UsagePlan', {
       name: 'Standard',
       throttle: {

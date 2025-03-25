@@ -35,7 +35,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       Item: {
         category: { S: category },
         productId: { S: productId },
-        name: { S: name || productId }, // Use name or default to productId
+        name: { S: name || productId },
         description: { S: description },
         price: { N: price.toString() },
         inStock: { BOOL: body.inStock ?? true },
